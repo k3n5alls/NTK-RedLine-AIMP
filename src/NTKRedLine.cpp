@@ -13,8 +13,24 @@ class RedLineVisualization final : public IAIMPExtensionEmbeddedVisualization {
     std::atomic<ULONG> refs_{1};
     int width_ = 1;
     int height_ = 1;
+    IAIMPString* name_ = nullptr;
 
 public:
+    explicit RedLineVisualization(IAIMPCore* core) {
+        if (core) {
+            void* obj = nullptr;
+            if (SUCCEEDED(core->CreateObject(IID_IAIMPString, &obj)) && obj) {
+                name_ = static_cast<IAIMPString*>(obj);
+                static TChar name[] = L"NTK Red Line";
+                name_->SetData(name, static_cast<int>(wcslen(name)));
+            }
+        }
+    }
+
+    ~RedLineVisualization() override {
+        if (name_) name_->Release();
+    }
+
     HRESULT WINAPI QueryInterface(REFIID riid, void** ppv) override {
         if (!ppv) return E_POINTER;
         *ppv = nullptr;
@@ -51,10 +67,10 @@ public:
     HRESULT WINAPI GetName(IAIMPString** S) override {
         if (!S) return E_POINTER;
         *S = nullptr;
-        // AIMP creates the string object through the core; the display name is
-        // not essential for rendering. Returning E_FAIL is accepted by the
-        // official demo as long as the extension itself is registered.
-        return E_FAIL;
+        if (!name_) return E_FAIL;
+        name_->AddRef();
+        *S = name_;
+        return S_OK;
     }
 
     HRESULT WINAPI Initialize(int Width, int Height) override {
@@ -76,8 +92,16 @@ public:
         if (!canvas || !data || width_ < 2 || height_ < 2)
             return;
 
-        // Deliberately draw ONLY the red waveform. No background, grid,
-        // glow or other pixels are touched, so the user's AIMP skin remains.
+        // The visualization occupies the skin's waveform rectangle.
+        // Clear that rectangle first so the skin's old spectrum bars do not
+        // remain underneath the new waveform. Keep everything else untouched.
+        RECT rc{0, 0, width_, height_};
+        HBRUSH bg = CreateSolidBrush(RGB(4, 4, 4));
+        if (bg) {
+            FillRect(canvas, &rc, bg);
+            DeleteObject(bg);
+        }
+
         HPEN pen = CreatePen(PS_SOLID, 1, RGB(230, 38, 35));
         if (!pen) return;
 
@@ -159,7 +183,7 @@ public:
         core_ = Core;
         core_->AddRef();
 
-        visualization_ = new RedLineVisualization();
+        visualization_ = new RedLineVisualization(core_);
 
         HRESULT hr = core_->RegisterExtension(
             IID_IAIMPServiceVisualizations,
