@@ -14,6 +14,8 @@ class RedLineVisualization final : public IAIMPExtensionEmbeddedVisualization {
     int width_ = 1;
     int height_ = 1;
     IAIMPString* name_ = nullptr;
+    float smooth_[AIMP_VISUAL_WAVEFORM_MAX]{};
+    bool smoothReady_ = false;
 
 public:
     explicit RedLineVisualization(IAIMPCore* core) {
@@ -76,10 +78,15 @@ public:
     HRESULT WINAPI Initialize(int Width, int Height) override {
         width_ = std::max(1, Width);
         height_ = std::max(1, Height);
+        smoothReady_ = false;
+        std::fill(smooth_, smooth_ + AIMP_VISUAL_WAVEFORM_MAX, 0.0f);
         return S_OK;
     }
 
-    void WINAPI Finalize() override {}
+    void WINAPI Finalize() override {
+        smoothReady_ = false;
+        std::fill(smooth_, smooth_ + AIMP_VISUAL_WAVEFORM_MAX, 0.0f);
+    }
 
     void WINAPI Click(int, int, int) override {}
 
@@ -110,10 +117,30 @@ public:
         const int center = height_ / 2;
         const float scale = std::max(1.0f, height_ * 0.20f);
 
-        auto sample = [&](int i) -> float {
+        // Temporal smoothing: keep the same maximum amplitude, but make the
+        // waveform react more slowly to sudden frame-to-frame changes.
+        // Attack is quicker than release so drops remain visible without
+        // making the line jump violently.
+        constexpr float kAttack = 0.25f;
+        constexpr float kRelease = 0.08f;
+
+        for (int i = 0; i < AIMP_VISUAL_WAVEFORM_MAX; ++i) {
             float l = data->WaveForm[0][i];
             float r = data->WaveForm[1][i];
-            return std::clamp((l + r) * 0.5f, -1.0f, 1.0f);
+            float current = std::clamp((l + r) * 0.5f, -1.0f, 1.0f);
+
+            if (!smoothReady_) {
+                smooth_[i] = current;
+            } else {
+                float alpha = (std::fabs(current) > std::fabs(smooth_[i]))
+                    ? kAttack : kRelease;
+                smooth_[i] += (current - smooth_[i]) * alpha;
+            }
+        }
+        smoothReady_ = true;
+
+        auto sample = [&](int i) -> float {
+            return smooth_[i];
         };
 
         int y0 = center - static_cast<int>(std::lround(sample(0) * scale));
