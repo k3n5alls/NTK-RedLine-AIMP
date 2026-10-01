@@ -27,7 +27,7 @@ public:
         }
     }
 
-    ~RedLineVisualization() {
+    ~RedLineVisualization() override {
         if (name_) name_->Release();
     }
 
@@ -108,7 +108,7 @@ public:
         HGDIOBJ old = SelectObject(canvas, pen);
 
         const int center = height_ / 2;
-        const float scale = std::max(1.0f, height_ * 0.45f);
+        const float scale = std::max(1.0f, height_ * 0.20f);
 
         auto sample = [&](int i) -> float {
             float l = data->WaveForm[0][i];
@@ -139,7 +139,7 @@ class RedLinePlugin final : public IAIMPPlugin {
         static TChar name[] = L"NTK Red Line x64";
         static TChar author[] = L"Clean-room reimplementation";
         static TChar shortDesc[] = L"Minimal red waveform line for AIMP 5.40 x64";
-        static TChar fullDesc[] = L"Single 1px red waveform line designed for dark/red AIMP skins.";
+        static TChar fullDesc[] = L"Single 1px red waveform line with reduced vertical amplitude for dark/red AIMP skins.";
         switch (index) {
             case AIMP_PLUGIN_INFO_NAME: return name;
             case AIMP_PLUGIN_INFO_AUTHOR: return author;
