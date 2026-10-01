@@ -27,7 +27,7 @@ public:
         }
     }
 
-    ~RedLineVisualization() override {
+    ~RedLineVisualization() {
         if (name_) name_->Release();
     }
 
