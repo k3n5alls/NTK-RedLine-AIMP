@@ -1,0 +1,43 @@
+name: Build NTK Red Line x64
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MinGW
+        shell: powershell
+        run: |
+          choco install mingw -y
+
+      - name: Configure
+        shell: powershell
+        run: |
+          mkdir build -ErrorAction SilentlyContinue
+          cd build
+          cmake .. -G "MinGW Makefiles"
+
+      - name: Build
+        shell: powershell
+        run: |
+          cmake --build build --config Release
+
+      - name: Prepare package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path package\x64
+          Copy-Item build\aimp_NTKRedLine.dll package\x64\aimp_NTKRedLine.dll
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: NTK-RedLine-x64
+          path: package\x64\aimp_NTKRedLine.dll
