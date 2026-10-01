@@ -121,8 +121,8 @@ public:
         // waveform react more slowly to sudden frame-to-frame changes.
         // Attack is quicker than release so drops remain visible without
         // making the line jump violently.
-        constexpr float kAttack = 0.25f;
-        constexpr float kRelease = 0.08f;
+        constexpr float kAttack = 0.45f;
+        constexpr float kRelease = 0.18f;
 
         for (int i = 0; i < AIMP_VISUAL_WAVEFORM_MAX; ++i) {
             float l = data->WaveForm[0][i];
