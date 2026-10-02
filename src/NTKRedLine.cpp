@@ -109,34 +109,48 @@ public:
 
         const int center = height_ / 2;
 
-        // Video Match:
-        // - keep V2's single 1px red waveform and dark clear
-        // - reduce the V2 amplitude to the compact movement seen in the reference
-        // - use a light temporal blend so the line stays lively instead of becoming slow
-        const float scale = std::max(1.0f, height_ * 0.25f);
-        constexpr float response = 0.68f; // new frame weight
-        static float previous[AIMP_VISUAL_WAVEFORM_MAX] = {};
-        static bool havePrevious = false;
+        // V2 amplitude is intentionally preserved.
+        const float scale = std::max(1.0f, height_ * 0.45f);
+
+        // Moderate temporal response: enough to calm frame-to-frame jitter,
+        // while keeping the waveform responsive to transients.
+        constexpr float response = 0.72f;
+        static float temporal[AIMP_VISUAL_WAVEFORM_MAX] = {};
+        static bool temporalReady = false;
+
+        float raw[AIMP_VISUAL_WAVEFORM_MAX];
 
         for (int i = 0; i < AIMP_VISUAL_WAVEFORM_MAX; ++i) {
-            float l = data->WaveForm[0][i];
-            float r = data->WaveForm[1][i];
-            float current = std::clamp((l + r) * 0.5f, -1.0f, 1.0f);
+            const float l = data->WaveForm[0][i];
+            const float r = data->WaveForm[1][i];
+            raw[i] = std::clamp((l + r) * 0.5f, -1.0f, 1.0f);
 
-            if (!havePrevious) {
-                previous[i] = current;
-            } else {
-                previous[i] += (current - previous[i]) * response;
-            }
+            if (!temporalReady)
+                temporal[i] = raw[i];
+            else
+                temporal[i] += (raw[i] - temporal[i]) * response;
         }
-        havePrevious = true;
+        temporalReady = true;
 
-        int y0 = center - static_cast<int>(std::lround(previous[0] * scale));
+        // Smooth the waveform shape itself with a small 3-point moving average.
+        // This removes fine jaggedness without flattening the overall V2 shape.
+        float smooth[AIMP_VISUAL_WAVEFORM_MAX];
+        smooth[0] = temporal[0];
+        smooth[AIMP_VISUAL_WAVEFORM_MAX - 1] =
+            temporal[AIMP_VISUAL_WAVEFORM_MAX - 1];
+
+        for (int i = 1; i < AIMP_VISUAL_WAVEFORM_MAX - 1; ++i) {
+            smooth[i] = temporal[i - 1] * 0.20f
+                      + temporal[i]     * 0.60f
+                      + temporal[i + 1] * 0.20f;
+        }
+
+        int y0 = center - static_cast<int>(std::lround(smooth[0] * scale));
         MoveToEx(canvas, 0, y0, nullptr);
 
         for (int i = 1; i < AIMP_VISUAL_WAVEFORM_MAX; ++i) {
             int x = (i * (width_ - 1)) / (AIMP_VISUAL_WAVEFORM_MAX - 1);
-            int y = center - static_cast<int>(std::lround(previous[i] * scale));
+            int y = center - static_cast<int>(std::lround(smooth[i] * scale));
             LineTo(canvas, x, y);
         }
 
