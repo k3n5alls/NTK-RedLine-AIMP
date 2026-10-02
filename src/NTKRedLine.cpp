@@ -14,8 +14,6 @@ class RedLineVisualization final : public IAIMPExtensionEmbeddedVisualization {
     int width_ = 1;
     int height_ = 1;
     IAIMPString* name_ = nullptr;
-    float smooth_[AIMP_VISUAL_WAVEFORM_MAX]{};
-    bool smoothReady_ = false;
 
 public:
     explicit RedLineVisualization(IAIMPCore* core) {
@@ -78,15 +76,10 @@ public:
     HRESULT WINAPI Initialize(int Width, int Height) override {
         width_ = std::max(1, Width);
         height_ = std::max(1, Height);
-        smoothReady_ = false;
-        std::fill(smooth_, smooth_ + AIMP_VISUAL_WAVEFORM_MAX, 0.0f);
         return S_OK;
     }
 
-    void WINAPI Finalize() override {
-        smoothReady_ = false;
-        std::fill(smooth_, smooth_ + AIMP_VISUAL_WAVEFORM_MAX, 0.0f);
-    }
+    void WINAPI Finalize() override {}
 
     void WINAPI Click(int, int, int) override {}
 
@@ -115,40 +108,35 @@ public:
         HGDIOBJ old = SelectObject(canvas, pen);
 
         const int center = height_ / 2;
-        const float scale = std::max(1.0f, height_ * 0.20f);
 
-        // Temporal smoothing: keep the same maximum amplitude, but make the
-        // waveform react more slowly to sudden frame-to-frame changes.
-        // Attack is quicker than release so drops remain visible without
-        // making the line jump violently.
-        constexpr float kAttack = 0.45f;
-        constexpr float kRelease = 0.18f;
+        // Video Match:
+        // - keep V2's single 1px red waveform and dark clear
+        // - reduce the V2 amplitude to the compact movement seen in the reference
+        // - use a light temporal blend so the line stays lively instead of becoming slow
+        const float scale = std::max(1.0f, height_ * 0.25f);
+        constexpr float response = 0.68f; // new frame weight
+        static float previous[AIMP_VISUAL_WAVEFORM_MAX] = {};
+        static bool havePrevious = false;
 
         for (int i = 0; i < AIMP_VISUAL_WAVEFORM_MAX; ++i) {
             float l = data->WaveForm[0][i];
             float r = data->WaveForm[1][i];
             float current = std::clamp((l + r) * 0.5f, -1.0f, 1.0f);
 
-            if (!smoothReady_) {
-                smooth_[i] = current;
+            if (!havePrevious) {
+                previous[i] = current;
             } else {
-                float alpha = (std::fabs(current) > std::fabs(smooth_[i]))
-                    ? kAttack : kRelease;
-                smooth_[i] += (current - smooth_[i]) * alpha;
+                previous[i] += (current - previous[i]) * response;
             }
         }
-        smoothReady_ = true;
+        havePrevious = true;
 
-        auto sample = [&](int i) -> float {
-            return smooth_[i];
-        };
-
-        int y0 = center - static_cast<int>(std::lround(sample(0) * scale));
+        int y0 = center - static_cast<int>(std::lround(previous[0] * scale));
         MoveToEx(canvas, 0, y0, nullptr);
 
         for (int i = 1; i < AIMP_VISUAL_WAVEFORM_MAX; ++i) {
             int x = (i * (width_ - 1)) / (AIMP_VISUAL_WAVEFORM_MAX - 1);
-            int y = center - static_cast<int>(std::lround(sample(i) * scale));
+            int y = center - static_cast<int>(std::lround(previous[i] * scale));
             LineTo(canvas, x, y);
         }
 
@@ -166,7 +154,7 @@ class RedLinePlugin final : public IAIMPPlugin {
         static TChar name[] = L"NTK Red Line x64";
         static TChar author[] = L"Clean-room reimplementation";
         static TChar shortDesc[] = L"Minimal red waveform line for AIMP 5.40 x64";
-        static TChar fullDesc[] = L"Single 1px red waveform line with reduced vertical amplitude for dark/red AIMP skins.";
+        static TChar fullDesc[] = L"Single 1px red waveform line designed for dark/red AIMP skins.";
         switch (index) {
             case AIMP_PLUGIN_INFO_NAME: return name;
             case AIMP_PLUGIN_INFO_AUTHOR: return author;
